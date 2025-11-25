@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Colplex - Plataforma Educativa</title>
+    <title>VeyaSchool - Plataforma Educativa</title>
     
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
@@ -844,6 +844,32 @@
                 return false;
             }
         }
+
+        //cambia la configuración para mostrar notas a estudiantes
+
+                async function toggleVisibilidadNotas() {
+            if (!app.data.institucion) {
+                showNotification('No se ha cargado la configuración de la institución', 'danger');
+                return;
+            }
+
+            const estadoActual = app.data.institucion.mostrar_notas !== false; // Default true
+            const nuevoEstado = !estadoActual;
+
+            if(confirm(`¿Estás seguro de que deseas ${nuevoEstado ? 'MOSTRAR' : 'OCULTAR'} las notas a los estudiantes?`)) {
+                
+                const success = await updateData('instituciones', app.data.institucion.id, {
+                    mostrar_notas: nuevoEstado
+                });
+
+                if (success) {
+                    // Actualizar estado local
+                    app.data.institucion.mostrar_notas = nuevoEstado;
+                    renderView('dashboard');
+                }
+            }
+        }
+
 
         // ==========================================
         // AUTENTICACIÓN
@@ -3097,7 +3123,7 @@ function showCreateMaestroModal() {
             document.getElementById('app').innerHTML = `
                 <div class="login-container">
                     <div class="login-box">
-                        <h1>🎓 Colplex</h1>
+                        <h1>🎓VeyaSchool</h1>
                         <p style="text-align: center; color: #65676b; margin-bottom: 2rem;">
                             Plataforma Educativa
                         </p>
@@ -3117,7 +3143,7 @@ function showCreateMaestroModal() {
                         </form>
                         <div class="alert alert-info mt-2" style="font-size: 0.875rem;">
                             <strong>Usuario admin:</strong><br>
-                            admin@colplex.edu.gt / Admin123!
+                            🎓admin@VeyaSchool.edu.gt / Admin123!
                         </div>
                     </div>
                 </div>
@@ -3150,7 +3176,7 @@ function showCreateMaestroModal() {
             document.getElementById('app').innerHTML = `
                 <nav class="navbar">
                     <a href="#" class="navbar-brand" onclick="event.preventDefault(); changeView('dashboard');">
-                        🎓 Colplex
+                        🎓 VeyaSchool
                     </a>
                     <div class="navbar-user">
                         <span>${app.currentUser.nombre_completo}</span>
@@ -3311,6 +3337,7 @@ function showCreateMaestroModal() {
             console.log('📄 Contenido actualizado para vista:', viewName);
         }
 
+        //Actualización para activar o desactivar notas
         async function renderDashboard() {
             let stats = '';
 
@@ -3320,7 +3347,27 @@ function showCreateMaestroModal() {
                 const cursos = await getData('cursos');
                 const grados = await getData('grados');
 
+                // Lógica para el botón de visibilidad
+                // Si es undefined (columna nueva), asumimos true
+                const notasVisibles = app.data.institucion?.mostrar_notas !== false;
+
                 stats = `
+                    <!-- PANEL DE CONTROL DE VISIBILIDAD -->
+                    <div class="card" style="border-left: 5px solid ${notasVisibles ? 'var(--success)' : 'var(--danger)'}">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h3>👁️ Visibilidad de Notas para Estudiantes</h3>
+                                <p style="color: var(--text-secondary);">
+                                    Estado actual: <strong>${notasVisibles ? 'VISIBLE ✅' : 'OCULTO 🚫'}</strong>
+                                </p>
+                                <small>Si ocultas las notas, los estudiantes no podrán ver sus promedios ni boletas, pero los maestros sí podrán seguir calificando.</small>
+                            </div>
+                            <button class="btn ${notasVisibles ? 'btn-danger' : 'btn-success'}" onclick="toggleVisibilidadNotas()">
+                                ${notasVisibles ? '🚫 Ocultar Notas' : '✅ Mostrar Notas'}
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="stats-grid">
                         <div class="stat-card">
                             <h3>${estudiantes.length}</h3>
@@ -3352,15 +3399,18 @@ function showCreateMaestroModal() {
                 `;
             }
 
+            // Mensaje global si las notas están ocultas (para todos menos admin)
+            const avisoNotas = (app.data.institucion?.mostrar_notas === false && app.currentUser.rol !== 'admin') 
+                ? `<div class="alert alert-warning mt-2">⚠️ <strong>Aviso:</strong> La visualización de notas está temporalmente deshabilitada por administración.</div>`
+                : '';
+
             return `
                 <div class="card">
                     <div class="card-header">
                         👋 Bienvenido, ${app.currentUser.nombre_completo}
                     </div>
                     <p>Rol: <span class="badge badge-primary">${app.currentUser.rol.toUpperCase()}</span></p>
-                    <div class="alert alert-success mt-2">
-                        ✅ Sistema operativo | ${app.data.institucion?.nombre || 'Plataforma Colplex'}
-                    </div>
+                    ${avisoNotas}
                 </div>
                 ${stats}
             `;
@@ -5570,142 +5620,116 @@ function showCreateMaestroModal() {
                 `}
             `;
         }
+                    // ==========================================
+                    // FUNCIÓN AUXILIAR: Generar HTML de curso para estudiante (COMPLETA)
+                    // ==========================================
+                    async function generarHTMLCursoEstudiante(mc, estudianteId) {
+                        const curso = mc.cursos;
 
-            // ==========================================
-            // FUNCIÓN AUXILIAR: Generar HTML de curso para estudiante
-            // ==========================================
-            async function generarHTMLCursoEstudiante(mc, estudianteId) {
-                const curso = mc.cursos;
-                
-                // Obtener actividades del curso
-                const { data: actividades } = await supabaseClient
-                    .from('actividades')
-                    .select(`
-                        *,
-                        unidades (
-                            id,
-                            numero,
-                            nombre
-                        ),
-                        notas!left (
-                            nota,
-                            observaciones
-                        )
-                    `)
-                    .eq('curso_id', curso.id)
-                    .eq('notas.estudiante_id', estudianteId)
-                    .order('created_at', { ascending: false });
+                        // ✅ VERIFICAR SI SE PUEDEN MOSTRAR NOTAS
+                        // Si el campo no existe o es true, se muestran. Si es false, se ocultan.
+                        const mostrarNotas = app.data.institucion?.mostrar_notas !== false;
+                        
+                        // Obtener actividades del curso
+                        const { data: actividades } = await supabaseClient
+                            .from('actividades')
+                            .select(`
+                                *,
+                                unidades (
+                                    id,
+                                    numero,
+                                    nombre
+                                ),
+                                notas!left (
+                                    nota,
+                                    observaciones
+                                )
+                            `)
+                            .eq('curso_id', curso.id)
+                            .eq('notas.estudiante_id', estudianteId)
+                            .order('created_at', { ascending: false });
 
-                const totalActividades = actividades?.length || 0;
-                const actividadesConNota = actividades?.filter(a => a.notas && a.notas.length > 0).length || 0;
-                const actividadesPendientes = totalActividades - actividadesConNota;
+                        const totalActividades = actividades?.length || 0;
+                        const actividadesConNota = actividades?.filter(a => a.notas && a.notas.length > 0).length || 0;
+                        const actividadesPendientes = totalActividades - actividadesConNota;
 
-                const promedioCurso = await calcularPromedioCurso(estudianteId, curso.id);
+                        // ✅ SI NO SE PUEDEN MOSTRAR NOTAS, EL PROMEDIO ES OCULTO
+                        const promedioCurso = mostrarNotas ? await calcularPromedioCurso(estudianteId, curso.id) : '🔒';
 
-                // Agrupar actividades por unidad
-                const actividadesPorUnidad = {};
-                if (actividades) {
-                    actividades.forEach(act => {
-                        const unidadId = act.unidad_id;
-                        if (!actividadesPorUnidad[unidadId]) {
-                            actividadesPorUnidad[unidadId] = [];
+                        // Agrupar actividades por unidad
+                        const actividadesPorUnidad = {};
+                        if (actividades) {
+                            actividades.forEach(act => {
+                                const unidadId = act.unidad_id;
+                                if (!actividadesPorUnidad[unidadId]) {
+                                    actividadesPorUnidad[unidadId] = [];
+                                }
+                                actividadesPorUnidad[unidadId].push(act);
+                            });
                         }
-                        actividadesPorUnidad[unidadId].push(act);
-                    });
-                }
 
-                let html = `
-                    <div class="card">
-                        <div class="card-header" style="background: linear-gradient(135deg, ${curso.color || '#1877f2'}, var(--facebook-blue-dark)); color: white; border-radius: var(--radius);">
-                            <div>
-                                <h2 style="color: white; margin: 0;">${curso.nombre}</h2>
-                                <p style="margin: 0; opacity: 0.9;">${curso.codigo || 'Sin código'}</p>
-                            </div>
-                            <div class="promedio-display" style="background: rgba(255,255,255,0.2); font-size: 1.2rem;">
-                                Promedio: ${promedioCurso}
-                            </div>
-                        </div>
+                        let html = `
+                            <div class="card">
+                                <div class="card-header" style="background: linear-gradient(135deg, ${curso.color || '#1877f2'}, var(--facebook-blue-dark)); color: white; border-radius: var(--radius);">
+                                    <div>
+                                        <h2 style="color: white; margin: 0;">${curso.nombre}</h2>
+                                        <p style="margin: 0; opacity: 0.9;">${curso.codigo || 'Sin código'}</p>
+                                    </div>
+                                    <div class="promedio-display" style="background: rgba(255,255,255,0.2); font-size: 1.2rem;">
+                                        Promedio: ${promedioCurso}
+                                    </div>
+                                </div>
 
-                        ${curso.descripcion ? `
-                            <div class="alert alert-info">
-                                <strong>📖 Descripción:</strong> ${curso.descripcion}
-                            </div>
-                        ` : ''}
+                                ${curso.descripcion ? `
+                                    <div class="alert alert-info">
+                                        <strong>📖 Descripción:</strong> ${curso.descripcion}
+                                    </div>
+                                ` : ''}
 
-                        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 1rem;">
-                            <div style="background: var(--facebook-blue-light); padding: 1rem; border-radius: var(--radius); text-align: center;">
-                                <h3 style="color: var(--facebook-blue); margin: 0;">${totalActividades}</h3>
-                                <p style="margin: 0; color: var(--text-secondary);">Total Actividades</p>
-                            </div>
-                            <div style="background: #d4edda; padding: 1rem; border-radius: var(--radius); text-align: center;">
-                                <h3 style="color: var(--success); margin: 0;">${actividadesConNota}</h3>
-                                <p style="margin: 0; color: var(--text-secondary);">Completadas</p>
-                            </div>
-                            <div style="background: #fff3cd; padding: 1rem; border-radius: var(--radius); text-align: center;">
-                                <h3 style="color: #856404; margin: 0;">${actividadesPendientes}</h3>
-                                <p style="margin: 0; color: var(--text-secondary);">Pendientes</p>
-                            </div>
-                        </div>
-                `;
-
-                if (Object.keys(actividadesPorUnidad).length > 0) {
-                    html += '<h3 style="margin: 1rem 0;">📋 Actividades y Tareas</h3>';
-                    
-                    for (const unidadId in actividadesPorUnidad) {
-                        const acts = actividadesPorUnidad[unidadId];
-                        const unidad = acts[0]?.unidades;
-                        
-                        html += `
-                            <div style="margin-bottom: 1.5rem;">
-                                <h4 style="color: var(--facebook-blue); margin-bottom: 0.5rem;">
-                                    📖 Unidad ${unidad?.numero || ''}: ${unidad?.nombre || 'Sin nombre'}
-                                </h4>
+                                <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 1rem;">
+                                    <div style="background: var(--facebook-blue-light); padding: 1rem; border-radius: var(--radius); text-align: center;">
+                                        <h3 style="color: var(--facebook-blue); margin: 0;">${totalActividades}</h3>
+                                        <p style="margin: 0; color: var(--text-secondary);">Total Actividades</p>
+                                    </div>
+                                    <div style="background: #d4edda; padding: 1rem; border-radius: var(--radius); text-align: center;">
+                                        <h3 style="color: var(--success); margin: 0;">${actividadesConNota}</h3>
+                                        <p style="margin: 0; color: var(--text-secondary);">Completadas</p>
+                                    </div>
+                                    <div style="background: #fff3cd; padding: 1rem; border-radius: var(--radius); text-align: center;">
+                                        <h3 style="color: #856404; margin: 0;">${actividadesPendientes}</h3>
+                                        <p style="margin: 0; color: var(--text-secondary);">Pendientes</p>
+                                    </div>
+                                </div>
                         `;
-                        
-                        for (const act of acts) {
-                            const nota = act.notas && act.notas.length > 0 ? act.notas[0] : null;
-                            const tieneNota = nota !== null;
-                            const notaValor = nota?.nota || 0;
-                            let estadoColor = 'var(--warning)';
-                            
-                            if (tieneNota) {
-                                estadoColor = notaValor >= 60 ? 'var(--success)' : 'var(--danger)';
-                            }
 
-                            html += `
-                                <div class="actividad-item" style="border-left-color: ${estadoColor};">
-                                    <div class="flex justify-between items-center">
-                                        <div style="flex: 1;">
-                                            <h5 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
-                                                ${act.titulo}
-                                            </h5>
-                                            ${act.descripcion ? `
-                                                <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary);">
-                                                    ${act.descripcion}
-                                                </p>
-                                            ` : ''}
-                                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                                                <span class="badge badge-${act.tipo === 'examen' ? 'danger' : act.tipo === 'proyecto' ? 'warning' : 'primary'}">
-                                                    ${act.tipo}
-                                                </span>
-                                                <span class="badge badge-info">
-                                                    Puntaje máximo: ${act.puntaje_maximo}
-                                                </span>
-                                                ${act.fecha_entrega ? `
-                                                    <span class="badge badge-warning">
-                                                        📅 Entrega: ${new Date(act.fecha_entrega).toLocaleDateString('es-ES', {
-                                                            day: '2-digit',
-                                                            month: 'short',
-                                                            year: 'numeric',
-                                                            hour: '2-digit',
-                                                            minute: '2-digit'
-                                                        })}
-                                                    </span>
-                                                ` : ''}
-                                            </div>
-                                        </div>
-                                        <div style="text-align: center; min-width: 150px;">
-                                            ${tieneNota ? `
+                        if (Object.keys(actividadesPorUnidad).length > 0) {
+                            html += '<h3 style="margin: 1rem 0;">📋 Actividades y Tareas</h3>';
+                            
+                            for (const unidadId in actividadesPorUnidad) {
+                                const acts = actividadesPorUnidad[unidadId];
+                                const unidad = acts[0]?.unidades;
+                                
+                                html += `
+                                    <div style="margin-bottom: 1.5rem;">
+                                        <h4 style="color: var(--facebook-blue); margin-bottom: 0.5rem;">
+                                            📖 Unidad ${unidad?.numero || ''}: ${unidad?.nombre || 'Sin nombre'}
+                                        </h4>
+                                `;
+                                
+                                for (const act of acts) {
+                                    const nota = act.notas && act.notas.length > 0 ? act.notas[0] : null;
+                                    const tieneNota = nota !== null;
+                                    const notaValor = nota?.nota || 0;
+                                    
+                                    // ✅ LÓGICA VISUALIZACIÓN CONDICIONAL
+                                    let displayNota = '';
+                                    let estadoColor = 'var(--secondary)'; // Color por defecto
+
+                                    if (tieneNota) {
+                                        if (mostrarNotas) {
+                                            // CASO NORMAL: SE MUESTRAN LAS NOTAS
+                                            estadoColor = notaValor >= 60 ? 'var(--success)' : 'var(--danger)';
+                                            displayNota = `
                                                 <div class="promedio-display ${getPromedioClass(notaValor)}" style="font-size: 1.5rem; padding: 0.5rem;">
                                                     ${notaValor}/${act.puntaje_maximo}
                                                 </div>
@@ -5714,30 +5738,79 @@ function showCreateMaestroModal() {
                                                         💬 ${nota.observaciones}
                                                     </p>
                                                 ` : ''}
-                                            ` : `
-                                                <div style="background: var(--warning); color: white; padding: 0.5rem 1rem; border-radius: var(--radius); font-weight: 600;">
-                                                    ⏳ Pendiente
+                                            `;
+                                        } else {
+                                            // CASO OCULTO: SE MUESTRA CANDADO
+                                            estadoColor = 'var(--info)';
+                                            displayNota = `
+                                                <div style="background: #e2e6ea; color: #495057; padding: 0.5rem 1rem; border-radius: var(--radius); font-weight: 600; border: 1px solid #ced4da;">
+                                                    🔒 Calificado
                                                 </div>
-                                            `}
+                                            `;
+                                        }
+                                    } else {
+                                        // PENDIENTE (Igual para ambos casos)
+                                        estadoColor = 'var(--warning)';
+                                        displayNota = `
+                                            <div style="background: var(--warning); color: white; padding: 0.5rem 1rem; border-radius: var(--radius); font-weight: 600;">
+                                                ⏳ Pendiente
+                                            </div>
+                                        `;
+                                    }
+
+                                    html += `
+                                        <div class="actividad-item" style="border-left-color: ${estadoColor};">
+                                            <div class="flex justify-between items-center">
+                                                <div style="flex: 1;">
+                                                    <h5 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                                                        ${act.titulo}
+                                                    </h5>
+                                                    ${act.descripcion ? `
+                                                        <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary);">
+                                                            ${act.descripcion}
+                                                        </p>
+                                                    ` : ''}
+                                                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                                        <span class="badge badge-${act.tipo === 'examen' ? 'danger' : act.tipo === 'proyecto' ? 'warning' : 'primary'}">
+                                                            ${act.tipo}
+                                                        </span>
+                                                        <span class="badge badge-info">
+                                                            Puntaje máximo: ${act.puntaje_maximo}
+                                                        </span>
+                                                        ${act.fecha_entrega ? `
+                                                            <span class="badge badge-warning">
+                                                                📅 Entrega: ${new Date(act.fecha_entrega).toLocaleDateString('es-ES', {
+                                                                    day: '2-digit',
+                                                                    month: 'short',
+                                                                    year: 'numeric',
+                                                                    hour: '2-digit',
+                                                                    minute: '2-digit'
+                                                                })}
+                                                            </span>
+                                                        ` : ''}
+                                                    </div>
+                                                </div>
+                                                <div style="text-align: center; min-width: 150px;">
+                                                    ${displayNota}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
+                                    `;
+                                }
+                                
+                                html += '</div>';
+                            }
+                        } else {
+                            html += `
+                                <div class="alert alert-info">
+                                    📝 No hay actividades publicadas en este curso aún
                                 </div>
                             `;
                         }
-                        
-                        html += '</div>';
-                    }
-                } else {
-                    html += `
-                        <div class="alert alert-info">
-                            📝 No hay actividades publicadas en este curso aún
-                        </div>
-                    `;
-                }
 
-                html += '</div>';
-                return html;
-            }
+                        html += '</div>';
+                        return html;
+                    }
 
         // ==========================================
         // VISTA DE BOLETAS CON FILTROS (ADMIN/COORDINADOR)
@@ -6314,6 +6387,24 @@ function showCreateMaestroModal() {
         }  
 
         async function renderMisNotas() {
+
+            // ✅ VALIDACIÓN DE SEGURIDAD
+            // Si las notas están ocultas y soy estudiante, bloqueo la vista
+            if (app.data.institucion?.mostrar_notas === false && app.currentUser.rol === 'estudiante') {
+                return `
+                    <div class="card">
+                        <div style="text-align: center; padding: 3rem;">
+                            <div style="font-size: 4rem; margin-bottom: 1rem;">🔒</div>
+                            <h2>Calificaciones no disponibles</h2>
+                            <p style="color: var(--text-secondary);">
+                                La administración ha ocultado temporalmente la visualización de notas.
+                                <br>Por favor contacta a la dirección para más información.
+                            </p>
+                        </div>
+                    </div>
+                `;
+            }
+
             await loadMisCursos();
 
             if (app.data.misCursos.length === 0) {
@@ -6680,7 +6771,8 @@ function showCreateMaestroModal() {
 // ==========================================
 
 // Configuración del logo de la institución
-const LOGO_URL = 'https://i.ibb.co/rfq6S5YB/logo-institucion.png'; // ← Reemplazar con link directo
+// Reemplaza este enlace con la URL pública de tu logo (debe ser PNG o JPG)
+const URL_LOGO_INSTITUCION = 'https://i.postimg.cc/L86C6N3H/veya.png';  // ← Reemplazar con link directo
 
 // ==========================================
 // FUNCIÓN PRINCIPAL: Generar PDF de Boleta Individual
@@ -6748,6 +6840,21 @@ async function generarPDFBoleta(estudiante, cursosEstudiante) {
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 15;
     let yPos = margin;
+
+    // ✅ NUEVO LOGO: Intentar cargar y dibujar el logo
+            try {
+                // Cargamos la imagen usando la función auxiliar cargarImagen
+                const imgLogo = await cargarImagen(URL_LOGO_INSTITUCION);
+                
+                // Dibujamos la imagen: (imagen, formato, x, y, ancho, alto)
+                // La colocamos en la esquina superior izquierda
+                doc.addImage(imgLogo, 'PNG', margin, 10, 25, 25);
+                
+            } catch (error) {
+                console.warn('No se pudo cargar el logo (posible error de CORS o URL inválida):', error);
+            }
+            // ✅ FIN NUEVO LOGO
+            
     
     // Encabezado
     doc.setFontSize(18);
@@ -7042,7 +7149,7 @@ async function generarPDFBoleta(estudiante, cursosEstudiante) {
     doc.setFont(undefined, 'italic');
     doc.setTextColor(100, 100, 100);
     doc.text(
-        'Documento generado automáticamente por el Sistema Colplex',
+        'Documento generado automáticamente por el Sistema VeyaSchool',
         pageWidth / 2,
         pageHeight - 10,
         { align: 'center' }
