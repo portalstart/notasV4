@@ -1945,46 +1945,49 @@ async function createMaestro(formData) {
         // ACTIVIDADES
         // ==========================================
 
-        async function loadMisCursos() {
-            if (app.currentUser.rol === 'maestro') {
-                const { data } = await supabaseClient
-                    .from('curso_asignaciones')
-                    .select(`
-                        *,
-                        cursos (
-                            id,
-                            nombre,
-                            codigo,
-                            descripcion
-                        ),
-                        secciones (
-                            id,
-                            nombre,
-                            grado_id
-                        )
-                    `)
-                    .eq('maestro_id', app.currentUser.id)
-                    .eq('activo', true);
-                
-                app.data.misCursos = data || [];
-            } else if (app.currentUser.rol === 'estudiante') {
-                const { data } = await supabaseClient
-                    .from('estudiante_cursos')
-                    .select(`
-                        *,
-                        cursos (
-                            id,
-                            nombre,
-                            codigo,
-                            descripcion
-                        )
-                    `)
-                    .eq('estudiante_id', app.currentUser.id)
-                    .eq('activo', true);
-                
-                app.data.misCursos = data || [];
+               async function loadMisCursos() {
+                if (app.currentUser.rol === 'maestro') {
+                    const { data } = await supabaseClient
+                        .from('curso_asignaciones')
+                        .select(`
+                            *,
+                            cursos (
+                                id,
+                                nombre,
+                                codigo,
+                                descripcion
+                            ),
+                            secciones (
+                                id,
+                                nombre,
+                                grado_id,
+                                grados (
+                                    nombre
+                                )
+                            )
+                        `)
+                        .eq('maestro_id', app.currentUser.id)
+                        .eq('activo', true);
+                    
+                    app.data.misCursos = data || [];
+                } else if (app.currentUser.rol === 'estudiante') {
+                    const { data } = await supabaseClient
+                        .from('estudiante_cursos')
+                        .select(`
+                            *,
+                            cursos (
+                                id,
+                                nombre,
+                                codigo,
+                                descripcion
+                            )
+                        `)
+                        .eq('estudiante_id', app.currentUser.id)
+                        .eq('activo', true);
+                    
+                    app.data.misCursos = data || [];
+                }
             }
-        }
 
         async function loadActividades(cursoId, unidadId = null) {
             let filters = { curso_id: cursoId };
@@ -5374,247 +5377,90 @@ function showCreateMaestroModal() {
                     });
                 }
 
-                async function renderMisCursosView() {
-                    try {
-                        await loadMisCursos();
+            //función nueva para renderizar view cursos 
+         async function renderMisCursosView() {
+            try {
+                await loadMisCursos();
 
-                        if (app.currentUser.rol === 'maestro') {
-                            return `
-                                <div class="card">
-                                    <div class="card-header">
-                                        📚 Mis Cursos Asignados
-                                    </div>
+                // ==========================================
+                // VISTA PARA MAESTROS (Con Grado visible)
+                // ==========================================
+                if (app.currentUser.rol === 'maestro') {
+                    return `
+                        <div class="card">
+                            <div class="card-header">
+                                📚 Mis Cursos Asignados
+                            </div>
 
-                                    ${app.data.misCursos.length > 0 ? `
-                                        <div class="stats-grid">
-                                            ${app.data.misCursos.map(mc => `
-                                                <div class="stat-card" onclick="verDetallesCurso('${mc.curso_id}')">
-                                                    <h3>${mc.cursos.nombre}</h3>
-                                                    <p>Código: ${mc.cursos.codigo || 'N/A'}</p>
-                                                    <p>Sección: ${mc.secciones?.nombre || 'N/A'}</p>
-                                                </div>
-                                            `).join('')}
+                            ${app.data.misCursos.length > 0 ? `
+                                <div class="stats-grid">
+                                    ${app.data.misCursos.map(mc => `
+                                        <div class="stat-card" onclick="verDetallesCurso('${mc.curso_id}')">
+                                            <h3>${mc.cursos.nombre}</h3>
+                                            
+                                            <!-- ✅ NUEVO: VISUALIZAR EL GRADO -->
+                                            <div style="background: rgba(255,255,255,0.2); padding: 0.25rem 0.5rem; border-radius: 4px; margin: 0.5rem 0; font-weight: bold; font-size: 1.1rem;">
+                                                ${mc.secciones?.grados?.nombre || 'Grado Desconocido'}
+                                            </div>
+
+                                            <div style="font-size: 0.9rem; opacity: 0.9;">
+                                                <p>Sección: ${mc.secciones?.nombre || 'N/A'}</p>
+                                                <p>Código: ${mc.cursos.codigo || 'N/A'}</p>
+                                            </div>
                                         </div>
-                                    ` : `
-                                        <div class="empty-state">
-                                            <div class="empty-state-icon">📚</div>
-                                            <h3>No tienes cursos asignados</h3>
-                                            <p>Ve a "Asignarme Cursos" para inscribirte en un curso</p>
-                                            <button class="btn btn-primary mt-2" onclick="changeView('asignarme-cursos')">
-                                                ➕ Asignarme a un Curso
-                                            </button>
-                                        </div>
-                                    `}
+                                    `).join('')}
                                 </div>
-                            `;
-                        } else if (app.currentUser.rol === 'estudiante') {
-                            // VISTA COMPLETA PARA ESTUDIANTES
-                            if (app.data.misCursos.length === 0) {
-                                return `
-                                    <div class="card">
-                                        <div class="empty-state">
-                                            <div class="empty-state-icon">📚</div>
-                                            <h3>No estás inscrito en ningún curso</h3>
-                                            <p>Contacta con tu administrador para que te inscriba en los cursos</p>
-                                        </div>
-                                    </div>
-                                `;
-                            }
-
-                            let html = `
-                                <div class="card">
-                                    <div class="card-header">
-                                        📚 Mis Cursos (${app.data.misCursos.length})
-                                    </div>
-                                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">
-                                        Aquí puedes ver todos tus cursos, actividades pendientes y recursos disponibles
-                                    </p>
+                            ` : `
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">📚</div>
+                                    <h3>No tienes cursos asignados</h3>
+                                    <p>Ve a "Asignarme Cursos" para inscribirte en un curso</p>
+                                    <button class="btn btn-primary mt-2" onclick="changeView('asignarme-cursos')">
+                                        ➕ Asignarme a un Curso
+                                    </button>
                                 </div>
-                            `;
+                            `}
+                        </div>
+                    `;
+                } 
+                // ==========================================
+                // VISTA PARA ESTUDIANTES (Original)
+                // ==========================================
+                else if (app.currentUser.rol === 'estudiante') {
+                    if (app.data.misCursos.length === 0) {
+                        return `
+                            <div class="card">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">📚</div>
+                                    <h3>No estás inscrito en ningún curso</h3>
+                                    <p>Contacta con tu administrador para que te inscriba en los cursos</p>
+                                </div>
+                            </div>
+                        `;
+                    }
 
-                            // Mostrar cada curso con sus detalles
-                            for (const mc of app.data.misCursos) {
-                                try {
-                                    const curso = mc.cursos;
-                                    
-                                    // Obtener actividades del curso
-                                    const { data: actividades, error: actError } = await supabaseClient
-                                        .from('actividades')
-                                        .select(`
-                                            *,
-                                            unidades (
-                                                id,
-                                                numero,
-                                                nombre
-                                            ),
-                                            notas!left (
-                                                nota,
-                                                observaciones
-                                            )
-                                        `)
-                                        .eq('curso_id', curso.id)
-                                        .eq('notas.estudiante_id', app.currentUser.id)
-                                        .order('created_at', { ascending: false });
+                    let html = `
+                        <div class="card">
+                            <div class="card-header">
+                                📚 Mis Cursos (${app.data.misCursos.length})
+                            </div>
+                            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                                Aquí puedes ver todos tus cursos, actividades pendientes y recursos disponibles
+                            </p>
+                        </div>
+                    `;
 
-                                    if (actError) {
-                                        console.error('Error cargando actividades:', actError);
-                                    }
+                    // Usamos la función auxiliar definida en Parte 4 para generar el HTML detallado
+                    for (const mc of app.data.misCursos) {
+                        html += await generarHTMLCursoEstudiante(mc, app.currentUser.id);
+                    }
+                    
+                    return html;
+                }
 
-                                    // Calcular estadísticas del curso
-                                    const totalActividades = actividades?.length || 0;
-                                    const actividadesConNota = actividades?.filter(a => a.notas && a.notas.length > 0).length || 0;
-                                    const actividadesPendientes = totalActividades - actividadesConNota;
-
-                                    // Calcular promedio del curso
-                                    const promedioCurso = await calcularPromedioCurso(app.currentUser.id, curso.id);
-
-                                    // Agrupar actividades por unidad
-                                    const actividadesPorUnidad = {};
-                                    if (actividades) {
-                                        actividades.forEach(act => {
-                                            const unidadId = act.unidad_id;
-                                            if (!actividadesPorUnidad[unidadId]) {
-                                                actividadesPorUnidad[unidadId] = [];
-                                            }
-                                            actividadesPorUnidad[unidadId].push(act);
-                                        });
-                                    }
-
-                                    html += `
-                                        <div class="card">
-                                            <div class="card-header" style="background: linear-gradient(135deg, ${curso.color || '#1877f2'}, var(--facebook-blue-dark)); color: white; border-radius: var(--radius);">
-                                                <div>
-                                                    <h2 style="color: white; margin: 0;">${curso.nombre}</h2>
-                                                    <p style="margin: 0; opacity: 0.9;">${curso.codigo || 'Sin código'}</p>
-                                                </div>
-                                                <div class="promedio-display" style="background: rgba(255,255,255,0.2); font-size: 1.2rem;">
-                                                    Promedio: ${promedioCurso}
-                                                </div>
-                                            </div>
-
-                                            ${curso.descripcion ? `
-                                                <div class="alert alert-info">
-                                                    <strong>📖 Descripción:</strong> ${curso.descripcion}
-                                                </div>
-                                            ` : ''}
-
-                                            <!-- Estadísticas del curso -->
-                                            <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 1rem;">
-                                                <div style="background: var(--facebook-blue-light); padding: 1rem; border-radius: var(--radius); text-align: center;">
-                                                    <h3 style="color: var(--facebook-blue); margin: 0;">${totalActividades}</h3>
-                                                    <p style="margin: 0; color: var(--text-secondary);">Total Actividades</p>
-                                                </div>
-                                                <div style="background: #d4edda; padding: 1rem; border-radius: var(--radius); text-align: center;">
-                                                    <h3 style="color: var(--success); margin: 0;">${actividadesConNota}</h3>
-                                                    <p style="margin: 0; color: var(--text-secondary);">Completadas</p>
-                                                </div>
-                                                <div style="background: #fff3cd; padding: 1rem; border-radius: var(--radius); text-align: center;">
-                                                    <h3 style="color: #856404; margin: 0;">${actividadesPendientes}</h3>
-                                                    <p style="margin: 0; color: var(--text-secondary);">Pendientes</p>
-                                                </div>
-                                            </div>
-
-                                            <!-- Actividades por unidad -->
-                                            ${Object.keys(actividadesPorUnidad).length > 0 ? `
-                                                <h3 style="margin: 1rem 0;">📋 Actividades y Tareas</h3>
-                                                ${Object.keys(actividadesPorUnidad).map(unidadId => {
-                                                    const acts = actividadesPorUnidad[unidadId];
-                                                    const unidad = acts[0]?.unidades;
-                                                    
-                                                    return `
-                                                        <div style="margin-bottom: 1.5rem;">
-                                                            <h4 style="color: var(--facebook-blue); margin-bottom: 0.5rem;">
-                                                                📖 Unidad ${unidad?.numero || ''}: ${unidad?.nombre || 'Sin nombre'}
-                                                            </h4>
-                                                            
-                                                            ${acts.map(act => {
-                                                                const nota = act.notas && act.notas.length > 0 ? act.notas[0] : null;
-                                                                const tieneNota = nota !== null;
-                                                                const notaValor = nota?.nota || 0;
-                                                                const estadoColor = tieneNota ? 
-                                                                    (notaValor >= 60 ? 'var(--success)' : 'var(--danger)') : 
-                                                                    'var(--warning)';
-
-                                                                return `
-                                                                    <div class="actividad-item" style="border-left-color: ${estadoColor};">
-                                                                        <div class="flex justify-between items-center">
-                                                                            <div style="flex: 1;">
-                                                                                <h5 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
-                                                                                    ${act.titulo}
-                                                                                </h5>
-                                                                                ${act.descripcion ? `
-                                                                                    <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary);">
-                                                                                        ${act.descripcion}
-                                                                                    </p>
-                                                                                ` : ''}
-                                                                                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                                                                                    <span class="badge badge-${act.tipo === 'examen' ? 'danger' : act.tipo === 'proyecto' ? 'warning' : 'primary'}">
-                                                                                        ${act.tipo}
-                                                                                    </span>
-                                                                                    <span class="badge badge-info">
-                                                                                        Puntaje máximo: ${act.puntaje_maximo}
-                                                                                    </span>
-                                                                                    ${act.fecha_entrega ? `
-                                                                                        <span class="badge badge-warning">
-                                                                                            📅 Entrega: ${new Date(act.fecha_entrega).toLocaleDateString('es-ES', {
-                                                                                                day: '2-digit',
-                                                                                                month: 'short',
-                                                                                                year: 'numeric',
-                                                                                                hour: '2-digit',
-                                                                                                minute: '2-digit'
-                                                                                            })}
-                                                                                        </span>
-                                                                                    ` : ''}
-                                                                                </div>
-                                                                            </div>
-                                                                            <div style="text-align: center; min-width: 150px;">
-                                                                                ${tieneNota ? `
-                                                                                    <div class="promedio-display ${getPromedioClass(notaValor)}" style="font-size: 1.5rem; padding: 0.5rem;">
-                                                                                        ${notaValor}/${act.puntaje_maximo}
-                                                                                    </div>
-                                                                                    ${nota.observaciones ? `
-                                                                                        <p style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">
-                                                                                            💬 ${nota.observaciones}
-                                                                                        </p>
-                                                                                    ` : ''}
-                                                                                ` : `
-                                                                                    <div style="background: var(--warning); color: white; padding: 0.5rem 1rem; border-radius: var(--radius); font-weight: 600;">
-                                                                                        ⏳ Pendiente
-                                                                                    </div>
-                                                                                `}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                `;
-                                                            }).join('')}
-                                                        </div>
-                                                    `;
-                                                }).join('')}
-                                            ` : `
-                                                <div class="alert alert-info">
-                                                    📝 No hay actividades publicadas en este curso aún
-                                                </div>
-                                            `}
-                                        </div>
-                                    `;
-
-                                } catch (cursoError) {
-                                    console.error('Error renderizando curso:', cursoError);
-                                    html += `
-                                        <div class="card">
-                                            <div class="alert alert-danger">
-                                                ⚠️ Error al cargar el curso: ${mc.cursos?.nombre || 'Desconocido'}
-                                                <br><small>${cursoError.message}</small>
-                                            </div>
-                                        </div>
-                                    `;
-                                }
-                            }
-
-                            return html;
-                        }
-
-                // Si no es ni maestro ni estudiante
+                // ==========================================
+                // FALLBACK (Si no es ni maestro ni estudiante)
+                // ==========================================
                 return `
                     <div class="card">
                         <div class="alert alert-warning">
@@ -5624,6 +5470,9 @@ function showCreateMaestroModal() {
                 `;
 
             } catch (error) {
+                // ==========================================
+                // MANEJO DE ERRORES (Lo que solicitaste)
+                // ==========================================
                 console.error('❌ Error en renderMisCursosView:', error);
                 return `
                     <div class="card">
@@ -5639,6 +5488,7 @@ function showCreateMaestroModal() {
             }
         }
 
+            //Detalles del curso
         async function verDetallesCurso(cursoId) {
             await loadUnidades();
             await loadActividades(cursoId);
